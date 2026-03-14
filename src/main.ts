@@ -29,6 +29,7 @@ const nodesContainer = document.getElementById('nodes-container')!;
 const svgContainer = document.getElementById('connections-svg') as object as SVGSVGElement;
 const searchInput = document.getElementById('search-input') as HTMLInputElement;
 const focusInput = document.getElementById('focus-input') as HTMLInputElement;
+const focusPrereqsOnly = document.getElementById('focus-prereqs-only') as HTMLInputElement;
 const datalist = document.getElementById('tech-list')!;
 const exportBtn = document.getElementById('export-btn')!;
 const importBtn = document.getElementById('import-btn') as HTMLInputElement;
@@ -40,6 +41,13 @@ const deleteSnapBtn = document.getElementById('delete-snapshot-btn')!;
 const modal = document.getElementById('delete-modal')!;
 const modalCancel = document.getElementById('modal-cancel')!;
 const modalConfirm = document.getElementById('modal-confirm')!;
+
+// Stats Elements
+const statTechCount = document.getElementById('stat-tech-count')!;
+const statDepCount = document.getElementById('stat-dep-count')!;
+const focusStats = document.getElementById('focus-stats')!;
+const statFocusName = document.getElementById('stat-focus-name')!;
+const statFocusReq = document.getElementById('stat-focus-req')!;
 
 // Maps for quick lookups
 const nodeElements = new Map<string, HTMLDivElement>();
@@ -155,8 +163,14 @@ function saveData() {
   localStorage.setItem('selesta_techtree', JSON.stringify(graphData));
 }
 
+function updateGlobalStats() {
+  statTechCount.textContent = graphData.technologies.length.toString();
+  statDepCount.textContent = graphData.dependencies.length.toString();
+}
+
 // --- Rendering ---
 function renderAll() {
+  updateGlobalStats();
   nodesContainer.innerHTML = '';
   datalist.innerHTML = '';
   const paths = svgContainer.querySelectorAll('.connection-path');
@@ -514,6 +528,7 @@ function setupEvents() {
             graphData.dependencies.push({ sourceId: dragPinInfo.sourceId, targetId });
             createConnectionElement({ sourceId: dragPinInfo.sourceId, targetId });
             updateConnectionPath(dragPinInfo.sourceId, targetId);
+            updateGlobalStats();
             saveData();
           }
         }
@@ -604,10 +619,19 @@ function setupEvents() {
     });
   });
 
+  focusPrereqsOnly.addEventListener('change', () => {
+    // Re-trigger the focus input function to recalculate graph
+    focusInput.dispatchEvent(new Event('input'));
+  });
+
   focusInput.addEventListener('input', () => {
     const query = focusInput.value.toLowerCase().trim();
     if (!query) {
-      nodeElements.forEach(n => n.classList.remove('hidden-unfocused'));
+      focusStats.classList.add('hidden');
+      nodeElements.forEach(n => {
+        n.classList.remove('hidden-unfocused');
+        n.classList.remove('focused-match');
+      });
       connectionPaths.forEach(p => p.classList.remove('hidden-unfocused'));
       return;
     }
@@ -616,12 +640,26 @@ function setupEvents() {
     if (!exactMatch) {
       const partials = graphData.technologies.filter(t => t.name.toLowerCase().includes(query));
       if (partials.length > 0) exactMatch = partials[0];
-      else return; 
+      else {
+        focusStats.classList.add('hidden');
+        nodeElements.forEach(n => n.classList.remove('focused-match'));
+        return; 
+      }
     }
 
-    const connected = getConnectedNodes(exactMatch.id);
+    // Update Focus Stats display
+    focusStats.classList.remove('hidden');
+    statFocusName.textContent = exactMatch.name;
+    const directPredecessors = graphData.dependencies.filter(d => d.targetId === exactMatch!.id).length;
+    statFocusReq.textContent = directPredecessors.toString();
+
+    const connected = getConnectedNodes(exactMatch.id, focusPrereqsOnly.checked);
     
     nodeElements.forEach((node, id) => {
+      // Glow logic
+      node.classList.remove('focused-match');
+      if (id === exactMatch!.id) node.classList.add('focused-match');
+
       if (connected.has(id)) node.classList.remove('hidden-unfocused');
       else node.classList.add('hidden-unfocused');
     });
@@ -671,21 +709,26 @@ function setupEvents() {
 
 }
 
-function getConnectedNodes(rootId: string): Set<string> {
+function getConnectedNodes(rootId: string, prereqsOnly: boolean): Set<string> {
   const connected = new Set<string>();
   connected.add(rootId);
   
   let queue = [rootId];
-  while (queue.length > 0) {
-    const cur = queue.shift()!;
-    graphData.dependencies.forEach(d => {
-      if (d.sourceId === cur && !connected.has(d.targetId)) {
-        connected.add(d.targetId);
-        queue.push(d.targetId);
-      }
-    });
+
+  // traverse forwards (targets / those who depend ON this tech)
+  if (!prereqsOnly) {
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      graphData.dependencies.forEach(d => {
+        if (d.sourceId === cur && !connected.has(d.targetId)) {
+          connected.add(d.targetId);
+          queue.push(d.targetId);
+        }
+      });
+    }
   }
   
+  // traverse backwards (sources / prerequisites OF this tech)
   queue = [rootId];
   while (queue.length > 0) {
     const cur = queue.shift()!;
@@ -711,6 +754,7 @@ function removeNode(id: string) {
     }
     return true;
   });
+  updateGlobalStats();
   saveData();
 }
 
@@ -719,6 +763,7 @@ function removeConnection(sourceId: string, targetId: string) {
     !(d.sourceId === sourceId && d.targetId === targetId)
   );
   removeConnectionElement(sourceId, targetId);
+  updateGlobalStats();
   saveData();
 }
 

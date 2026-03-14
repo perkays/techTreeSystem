@@ -14,6 +14,10 @@
           <input type="text" id="search-input" placeholder="Search technology..." />
           <input type="text" list="tech-list" id="focus-input" placeholder="Focus Tech..." title="Show only a specific technology and dependencies" />
           <datalist id="tech-list"></datalist>
+          <label class="checkbox-label" title="Zeigt nur an, welche Technologien vorher erforscht werden müssen">
+            <input type="checkbox" id="focus-prereqs-only" />
+            Nur Vorgänger
+          </label>
           <button id="export-btn">Export JSON</button>
           <label class="button-label">
             Import JSON
@@ -25,6 +29,18 @@
         <select id="snapshot-dropdown"></select>
         <button id="restore-btn">Restore Default</button>
         <button id="delete-snapshot-btn" class="danger-btn">Delete</button>
+      </div>
+      
+      <div id="stats-panel" class="panel stats-panel">
+        <div id="global-stats">
+          Technologien: <span id="stat-tech-count">0</span><br/>
+          Abhängigkeiten: <span id="stat-dep-count">0</span>
+        </div>
+        <div id="focus-stats" class="hidden">
+          <hr />
+          Auswahl: <span id="stat-focus-name">-</span><br />
+          Zwingend erforderlich: <span id="stat-focus-req">0</span> Tech(s)
+        </div>
       </div>
     </div>
     
