@@ -30,6 +30,7 @@ const svgContainer = document.getElementById('connections-svg') as object as SVG
 const searchInput = document.getElementById('search-input') as HTMLInputElement;
 const focusInput = document.getElementById('focus-input') as HTMLInputElement;
 const focusPrereqsOnly = document.getElementById('focus-prereqs-only') as HTMLInputElement;
+const viewModeToggle = document.getElementById('view-mode-toggle') as HTMLInputElement;
 const datalist = document.getElementById('tech-list')!;
 const exportBtn = document.getElementById('export-btn')!;
 const importBtn = document.getElementById('import-btn') as HTMLInputElement;
@@ -70,15 +71,55 @@ const getCategoryColor = (catId: string) => {
   return index !== -1 ? catColors[index] : 'var(--text-muted)';
 };
 
+function serializeData(data: GraphData) {
+  const techs = data.technologies.map(t => {
+    const prereqs = data.dependencies
+      .filter(d => d.targetId === t.id)
+      .map(d => data.technologies.find(src => src.id === d.sourceId)?.name)
+      .filter(Boolean);
+    return { ...t, prerequisites: prereqs };
+  });
+  return { categories: data.categories, technologies: techs };
+}
+
+function deserializeData(parsed: any): GraphData {
+  if (parsed.dependencies && !parsed.technologies[0]?.prerequisites) {
+     return parsed as GraphData;
+  }
+
+  const deps: Dependency[] = [];
+  parsed.technologies.forEach((t: any) => {
+    if (t.prerequisites) {
+      t.prerequisites.forEach((pName: string) => {
+        const sourceTech = parsed.technologies.find((tech: any) => tech.name === pName);
+        if (sourceTech) {
+          deps.push({ sourceId: sourceTech.id, targetId: t.id });
+        }
+      });
+    }
+  });
+
+  const techs = parsed.technologies.map((t: any) => {
+    const { prerequisites, ...rest } = t;
+    return rest;
+  });
+
+  return {
+    categories: parsed.categories || [],
+    technologies: techs,
+    dependencies: deps
+  };
+}
+
 // --- Initialization ---
 function init() {
   loadSnapshots();
 
   // Try loading active working state from localStorage
-  const activeSaved = localStorage.getItem('selesta_techtree');
+  const activeSaved = localStorage.getItem('selesta_techtree_v2');
   if (activeSaved) {
     try {
-      graphData = JSON.parse(activeSaved);
+      graphData = deserializeData(JSON.parse(activeSaved));
     } catch {
       graphData = JSON.parse(JSON.stringify(snapshots[snapshots.length - 1].data)); // Fallback
     }
@@ -123,10 +164,14 @@ function init() {
 }
 
 function loadSnapshots() {
-  const saved = localStorage.getItem('selesta_snapshots');
+  const saved = localStorage.getItem('selesta_snapshots_v2');
   if (saved) {
     try {
-      snapshots = JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      snapshots = parsed.map((s: any) => ({
+          ...s,
+          data: deserializeData(s.data)
+      }));
     } catch {
       snapshots = [];
     }
@@ -141,11 +186,19 @@ function loadSnapshots() {
     });
     saveSnapshots();
   }
+  
+  // Resolve any initial state overlapping globally
+  resolveAllCollisions(snapshots[0].data);
+  
   updateSnapshotDropdown();
 }
 
 function saveSnapshots() {
-  localStorage.setItem('selesta_snapshots', JSON.stringify(snapshots));
+  const serializableSnapshots = snapshots.map(s => ({
+      ...s,
+      data: serializeData(s.data)
+  }));
+  localStorage.setItem('selesta_snapshots_v2', JSON.stringify(serializableSnapshots));
 }
 
 function updateSnapshotDropdown() {
@@ -160,7 +213,32 @@ function updateSnapshotDropdown() {
 }
 
 function saveData() {
-  localStorage.setItem('selesta_techtree', JSON.stringify(graphData));
+  localStorage.setItem('selesta_techtree_v2', JSON.stringify(serializeData(graphData)));
+}
+
+function resolveAllCollisions(dataRef: GraphData) {
+  let overlapFound = true;
+  let iters = 0;
+  // Maximum runs to avoid freezing
+  while (overlapFound && iters < 20) {
+    overlapFound = false;
+    for (let i = 0; i < dataRef.technologies.length; i++) {
+        for (let j = i + 1; j < dataRef.technologies.length; j++) {
+            const t1 = dataRef.technologies[i];
+            const t2 = dataRef.technologies[j];
+            const dx = t1.x - t2.x;
+            const dy = t1.y - t2.y;
+            // standard size of card roughly 240x80
+            if (Math.abs(dx) < 250 && Math.abs(dy) < 90) {
+                // push t2 slightly down and right
+                t2.x += 260; 
+                t2.y += 120;
+                overlapFound = true;
+            }
+        }
+    }
+    iters++;
+  }
 }
 
 function updateGlobalStats() {
@@ -416,10 +494,11 @@ function setupEvents() {
           pointerStartY: e.clientY
         };
         workspaceContainer.style.cursor = 'grabbing';
+        document.body.classList.add('is-panning'); // Performance Boost
         return;
     }
     
-    if (e.button === 0) { // Left mouse button
+    if (e.button === 0 && !viewModeToggle.checked) { // Left mouse button, disabled in view mode
       const target = e.target as HTMLElement;
 
       const clickedPath = target.closest('.connection-path') as SVGPathElement;
@@ -538,18 +617,62 @@ function setupEvents() {
       currentDrawingPath = null;
     }
 
-    if (dragState === IS_DRAG_NODE) saveData();
+    if (dragState === IS_DRAG_NODE && dragNodeInfo) {
+      const idx = graphData.technologies.findIndex(t => t.id === dragNodeInfo!.id);
+      if (idx !== -1) {
+        const mainTech = graphData.technologies[idx];
+        let collision = true;
+        let pLimit = 15;
+        while (collision && pLimit > 0) {
+          collision = false;
+          for (let t of graphData.technologies) {
+            if (t.id !== mainTech.id) {
+              const dx = mainTech.x - t.x;
+              const dy = mainTech.y - t.y;
+              // If the center of the dropped card is within a small box of another card's center (overlapping > 50%)
+              if (Math.abs(dx) < 60 && Math.abs(dy) < 40) {
+                mainTech.x += 40;
+                mainTech.y += 40;
+                collision = true;
+                break;
+              }
+            }
+          }
+          pLimit--;
+        }
+        
+        // Final update
+        updateNodePosition(mainTech.id, mainTech.x, mainTech.y);
+        graphData.dependencies.forEach(dep => {
+          if (dep.sourceId === mainTech.id || dep.targetId === mainTech.id) {
+            updateConnectionPath(dep.sourceId, dep.targetId);
+          }
+        });
+      }
+      if (dragState === IS_DRAG_NODE) saveData();
+    }
     
     dragState = 0;
     dragNodeInfo = null;
     dragWorkspaceInfo = null;
     dragPinInfo = null;
+    
+    document.body.classList.remove('is-panning'); // Performance Boost off
+    
     // reset cursor if middle mouse clicked
     workspaceContainer.style.cursor = 'grab';
   });
 
+  viewModeToggle.addEventListener('change', () => {
+    if (viewModeToggle.checked) {
+      document.body.classList.add('view-mode');
+    } else {
+      document.body.classList.remove('view-mode');
+    }
+  });
+
   exportBtn.addEventListener('click', () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(graphData, null, 2));
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(serializeData(graphData), null, 2));
     const dlAnchorElem = document.createElement('a');
     dlAnchorElem.setAttribute("href", dataStr);
     dlAnchorElem.setAttribute("download", "techtree-export.json");
@@ -564,7 +687,7 @@ function setupEvents() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = JSON.parse(reader.result as string);
+        const parsed = deserializeData(JSON.parse(reader.result as string));
         if (parsed.categories && parsed.technologies) {
           graphData = parsed;
           saveData();

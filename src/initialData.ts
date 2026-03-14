@@ -861,6 +861,8 @@ export function generateInitialGraph(): GraphData {
   let catIndex = 0;
   let itemsInCategory = 0;
 
+  const existingDocNames = new Set<string>();
+
   for (const line of lines) {
     if (line.match(/^\d+\.\s+(.+)/)) {
       let name = line.replace(/^\d+\.\s+/, '').replace(/\s*\(\d+\)$/, '');
@@ -873,13 +875,19 @@ export function generateInitialGraph(): GraphData {
       if (!currentCategory) continue;
       
       const techName = line.trim();
+      const tId = makeId(techName);
+      
+      if (existingDocNames.has(tId)) {
+          continue; // skip duplicate technologies that appear in multiple categories
+      }
+      existingDocNames.add(tId);
       
       // Calculate a simple grid layout
       const x = catIndex * 350 - 200;
       const y = itemsInCategory * 60 + 100;
 
       technologies.push({
-        id: makeId(techName),
+        id: tId,
         name: techName,
         category: makeId(currentCategory),
         x,
@@ -894,7 +902,6 @@ export function generateInitialGraph(): GraphData {
   const depLines = rawDeps.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
   // Add dummy technologies for implicit/missing ones mentioned in deps (e.g., Verstärkertechnik)
-  const existingDocNames = new Set(technologies.map(t => t.name.toLowerCase()));
 
   for (const line of depLines) {
     const parts = line.split('->');
@@ -902,24 +909,26 @@ export function generateInitialGraph(): GraphData {
     const targetName = parts[0].trim();
     const sourceNames = parts[1].split(',').map(s => s.trim());
     
+    const tId = makeId(targetName);
+
     // Add missing targets
-    if (!existingDocNames.has(targetName.toLowerCase())) {
-        existingDocNames.add(targetName.toLowerCase());
+    if (!existingDocNames.has(tId)) {
+        existingDocNames.add(tId);
         technologies.push({
-            id: makeId(targetName),
+            id: tId,
             name: targetName,
             category: categories[0].id,
             x: 0, y: 0
         });
     }
 
-    const tId = makeId(targetName);
     for (const sourceName of sourceNames) {
+      const sId = makeId(sourceName);
       // Add missing sources
-      if (!existingDocNames.has(sourceName.toLowerCase())) {
-          existingDocNames.add(sourceName.toLowerCase());
+      if (!existingDocNames.has(sId)) {
+          existingDocNames.add(sId);
           technologies.push({
-              id: makeId(sourceName),
+              id: sId,
               name: sourceName,
               category: categories[0].id,
               x: 0, y: 0

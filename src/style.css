@@ -259,12 +259,15 @@ button:hover, .button-label:hover, .checkbox-label:hover, #modal-cancel:hover {
 #workspace-container {
   width: 100vw;
   height: 100vh;
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
   overflow: hidden;
-  background-image: 
+  background-image:
     radial-gradient(circle at center, rgba(255,255,255,0.03) 1px, transparent 1px);
   background-size: 40px 40px;
   cursor: grab;
+  z-index: 10;
 }
 
 #workspace-container:active {
@@ -278,6 +281,31 @@ button:hover, .button-label:hover, .checkbox-label:hover, #modal-cancel:hover {
   transform-origin: 0 0;
   width: 10000px;
   height: 10000px;
+  will-change: transform;
+}
+
+/* Fast Panning Mode (disables internal hover hit-testing) */
+body.is-panning * {
+  pointer-events: none !important;
+}
+
+/* View Mode Toggles */
+body.view-mode .node {
+  box-shadow: none !important;
+  cursor: default !important;
+  transition: opacity 0.3s !important;
+}
+body.view-mode .node-header {
+  cursor: default !important;
+}
+body.view-mode .pin, body.view-mode .node-remove {
+  display: none !important;
+}
+body.view-mode .connection-path {
+  pointer-events: none !important;
+}
+body.view-mode .connection-path:hover {
+  stroke-width: 2.5px;
 }
 
 /* SVG Connections */
