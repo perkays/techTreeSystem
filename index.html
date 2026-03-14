@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Selesta-World Tech Tree</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="ui-layer">
+      <div class="panel header-panel">
+        <h1>Tech Tree Editor</h1>
+        <div class="controls">
+          <input type="text" id="search-input" placeholder="Search technology..." />
+          <input type="text" list="tech-list" id="focus-input" placeholder="Focus Tech..." title="Show only a specific technology and dependencies" />
+          <datalist id="tech-list"></datalist>
+          <button id="export-btn">Export JSON</button>
+          <label class="button-label">
+            Import JSON
+            <input type="file" id="import-btn" accept=".json" style="display: none;" />
+          </label>
+        </div>
+      </div>
+      <div class="panel snapshot-panel">
+        <select id="snapshot-dropdown"></select>
+        <button id="restore-btn">Restore Default</button>
+        <button id="delete-snapshot-btn" class="danger-btn">Delete</button>
+      </div>
+    </div>
+    
+    <!-- Confirm Modal -->
+    <div id="delete-modal" class="modal hidden">
+      <div class="modal-content">
+        <h3>Delete Default/Snapshot?</h3>
+        <p>Are you sure you want to delete this state permanently?</p>
+        <div class="modal-actions">
+          <button id="modal-cancel">Cancel</button>
+          <button id="modal-confirm" class="danger-btn">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="workspace-container">
+      <div id="workspace">
+        <svg id="connections-svg"></svg>
+        <div id="nodes-container"></div>
+      </div>
+    </div>
+    
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
