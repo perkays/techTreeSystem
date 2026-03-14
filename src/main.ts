@@ -31,6 +31,7 @@ const searchInput = document.getElementById('search-input') as HTMLInputElement;
 const focusInput = document.getElementById('focus-input') as HTMLInputElement;
 const focusPrereqsOnly = document.getElementById('focus-prereqs-only') as HTMLInputElement;
 const viewModeToggle = document.getElementById('view-mode-toggle') as HTMLInputElement;
+const autoSaveToggle = document.getElementById('auto-save-toggle') as HTMLInputElement;
 const datalist = document.getElementById('tech-list')!;
 const exportBtn = document.getElementById('export-btn')!;
 const importBtn = document.getElementById('import-btn') as HTMLInputElement;
@@ -113,6 +114,9 @@ function deserializeData(parsed: any): GraphData {
 
 // --- Initialization ---
 function init() {
+  const isAutoSave = localStorage.getItem('selesta_autosave');
+  autoSaveToggle.checked = isAutoSave === null ? false : isAutoSave === 'true';
+
   loadSnapshots();
 
   // Try loading active working state from localStorage
@@ -213,7 +217,9 @@ function updateSnapshotDropdown() {
 }
 
 function saveData() {
-  localStorage.setItem('selesta_techtree_v2', JSON.stringify(serializeData(graphData)));
+  if (autoSaveToggle.checked) {
+    localStorage.setItem('selesta_techtree_v2', JSON.stringify(serializeData(graphData)));
+  }
 }
 
 function resolveAllCollisions(dataRef: GraphData) {
@@ -668,6 +674,13 @@ function setupEvents() {
       document.body.classList.add('view-mode');
     } else {
       document.body.classList.remove('view-mode');
+    }
+  });
+
+  autoSaveToggle.addEventListener('change', () => {
+    localStorage.setItem('selesta_autosave', autoSaveToggle.checked.toString());
+    if (autoSaveToggle.checked) {
+      saveData();
     }
   });
 
