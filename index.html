@@ -12,8 +12,21 @@
         <h1>Tech Tree Editor</h1>
         <div class="controls">
           <input type="text" id="search-input" placeholder="Search technology..." />
-          <input type="text" list="tech-list" id="focus-input" placeholder="Focus Tech..." title="Show only a specific technology and dependencies" />
-          <datalist id="tech-list"></datalist>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="category-filter" title="Filter technologies by category">
+              <option value="">-- Kategorie wählen --</option>
+              <option value="**all**">Alle Technologien</option>
+            </select>
+            <button id="category-apply-btn" title="Apply category filter">Übernehmen</button>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div style="position: relative; display: flex; align-items: center;">
+              <input type="text" list="tech-list" id="focus-input" placeholder="Focus Tech..." title="Show only a specific technology and dependencies" style="padding-right: 32px;" />
+              <button id="focus-clear-btn" type="button" title="Clear focus input" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; font-size: 16px; padding: 0; color: var(--text-muted); display: none;">✕</button>
+            </div>
+            <datalist id="tech-list"></datalist>
+            <button id="focus-apply-btn" title="Apply focus filter">Übernehmen</button>
+          </div>
           <label class="checkbox-label" title="Zeigt nur an, welche Technologien vorher erforscht werden müssen">
             <input type="checkbox" id="focus-prereqs-only" />
             Nur Vorgänger
