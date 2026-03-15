@@ -1,4 +1,4 @@
-import { generateInitialGraph, GraphData, Technology, Dependency } from './initialData';
+import { generateInitialGraph, GraphData, Technology, Dependency, initialJsonData } from './initialData';
 
 // --- State and Interfaces ---
 export interface Snapshot {
@@ -376,11 +376,12 @@ function updateFocusState(): void {
   workerPanel.classList.remove('hidden');
   workerCardsContainer.innerHTML = '';
 
-  const tech = match as any;
+  // Always look up from the source JSON to get research + workerGroups regardless of localStorage state
+  const sourceTech: any = (initialJsonData as any).technologies.find((t: any) => t.id === match.id) || match;
 
   // Research info card
-  if (tech.research) {
-    const r = tech.research;
+  if (sourceTech.research) {
+    const r = sourceTech.research;
     const infoCard = document.createElement('div');
     infoCard.className = 'worker-card research-card';
     infoCard.innerHTML = `
@@ -396,7 +397,7 @@ function updateFocusState(): void {
   }
 
   // Separator if both sections present
-  if (tech.research && tech.workerGroups && Object.keys(tech.workerGroups).length > 0) {
+  if (sourceTech.research && sourceTech.workerGroups && Object.keys(sourceTech.workerGroups).length > 0) {
     const sep = document.createElement('div');
     sep.className = 'worker-panel-sep';
     sep.textContent = 'Benötigte Arbeiter';
@@ -404,8 +405,8 @@ function updateFocusState(): void {
   }
 
   // Worker group cards
-  if (tech.workerGroups) {
-    Object.entries(tech.workerGroups).forEach(([name, count]) => {
+  if (sourceTech.workerGroups) {
+    Object.entries(sourceTech.workerGroups).forEach(([name, count]) => {
       const card = document.createElement('div');
       card.className = 'worker-card';
       card.innerHTML = `
