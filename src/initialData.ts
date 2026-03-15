@@ -9,6 +9,7 @@ export interface Technology {
   category: string;
   x: number;
   y: number;
+  workerGroups: Record<string, number>;
 }
 
 export interface Dependency {
@@ -22,8 +23,9 @@ export interface GraphData {
   dependencies: Dependency[];
 }
 
-export interface TechnologyJson extends Technology {
+export interface TechnologyJson extends Omit<Technology, 'workerGroups'> {
   prerequisites?: string[];
+  workerGroups?: Record<string, number>;
 }
 
 export interface GraphJsonData {
@@ -61,7 +63,10 @@ function resolveTechnologyRef(
 export function cloneGraphData(data: GraphData): GraphData {
   return {
     categories: data.categories.map((category) => ({ ...category })),
-    technologies: data.technologies.map((technology) => ({ ...technology })),
+    technologies: data.technologies.map((technology) => ({
+      ...technology,
+      workerGroups: { ...technology.workerGroups }
+    })),
     dependencies: data.dependencies.map((dependency) => ({ ...dependency }))
   };
 }
@@ -95,7 +100,8 @@ export function normalizeGraphData(parsed: unknown): GraphData {
     name: technology.name,
     category: technology.category,
     x: toNumber(technology.x),
-    y: toNumber(technology.y)
+    y: toNumber(technology.y),
+    workerGroups: technology.workerGroups ?? {}
   }));
 
   const technologyIds = new Set(technologies.map((technology) => technology.id));

@@ -38,8 +38,13 @@
           <label class="checkbox-label" title="Änderungen am Baum (Positionen, Linien) werden nur gespeichert, wenn aktiviert. Ansonsten lädt das Neuladen den letzten gesicherten Stand.">
             <input type="checkbox" id="auto-save-toggle" />
             Auto-Save
-          </label>
-          <button id="export-btn">Export JSON</button>
+          <div style="display: flex; gap: 8px; align-items: center; margin-left: 12px;">
+            <select id="worker-filter" title="Filter technologies by worker group">
+              <option value="">-- Alle Arbeitergruppen --</option>
+            </select>
+            <span id="worker-filter-count" style="font-size: 13px; color: var(--text-muted); min-width: 60px;">0 Techs</span>
+          </div>
+          <button id="export-btn" style="margin-left:auto;">Export JSON</button>
           <label class="button-label">
             Import JSON
             <input type="file" id="import-btn" accept=".json" style="display: none;" />
@@ -62,6 +67,11 @@
           Auswahl: <span id="stat-focus-name">-</span><br />
           Zwingend erforderlich: <span id="stat-focus-req">0</span> Tech(s)
         </div>
+      </div>
+      
+      <div id="worker-panel" class="panel worker-panel hidden">
+        <h3>Benötigte Arbeitergruppen</h3>
+        <div id="worker-cards-container"></div>
       </div>
     </div>
     

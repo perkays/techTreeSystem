@@ -15,6 +15,7 @@ let graphData: GraphData = {
 };
 let snapshots: Snapshot[] = [];
 let categoryFilter: string = ''; // Will be set to first category on init
+let workerFilter: string = '';
 
 let transform = { x: 0, y: 0, scale: 1 };
 const IS_DRAG_NODE = 1, IS_DRAG_WORKSPACE = 2, IS_DRAG_PIN = 3;
@@ -40,6 +41,12 @@ const autoSaveToggle = document.getElementById('auto-save-toggle') as HTMLInputE
 const datalist = document.getElementById('tech-list')!;
 const exportBtn = document.getElementById('export-btn')!;
 const importBtn = document.getElementById('import-btn') as HTMLInputElement;
+
+// Worker Elements
+const workerFilterSelect = document.getElementById('worker-filter') as HTMLSelectElement;
+const workerFilterCount = document.getElementById('worker-filter-count') as HTMLSpanElement;
+const workerPanel = document.getElementById('worker-panel')!;
+const workerCardsContainer = document.getElementById('worker-cards-container')!;
 
 // Snapshot Elements
 const snapshotDropdown = document.getElementById('snapshot-dropdown') as HTMLSelectElement;
@@ -83,7 +90,7 @@ function serializeData(data: GraphData) {
       .filter(d => d.targetId === t.id)
       .map(d => data.technologies.find(src => src.id === d.sourceId)?.name)
       .filter(Boolean);
-    return { ...t, prerequisites: prereqs };
+    return { ...t, prerequisites: prereqs, workerGroups: { ...t.workerGroups } };
   });
   return { categories: data.categories, technologies: techs };
 }
@@ -94,6 +101,17 @@ function deserializeData(parsed: unknown): GraphData {
 
 function hasGraphContent(data: GraphData) {
   return data.categories.length > 0 && data.technologies.length > 0;
+}
+
+function mergeMissingWorkerGroups(targetData: GraphData, baseData: GraphData) {
+  targetData.technologies.forEach(tech => {
+    if (!tech.workerGroups || Object.keys(tech.workerGroups).length === 0) {
+      const baseTech = baseData.technologies.find(t => t.id === tech.id);
+      if (baseTech && baseTech.workerGroups) {
+        tech.workerGroups = { ...baseTech.workerGroups };
+      }
+    }
+  });
 }
 
 // --- Initialization ---
@@ -123,6 +141,11 @@ async function init() {
   } else {
     graphData = cloneGraphData(snapshots[snapshots.length - 1].data);
   }
+
+  mergeMissingWorkerGroups(graphData, baseGraphData);
+  snapshots.forEach(s => mergeMissingWorkerGroups(s.data, baseGraphData));
+  saveData(); // Save back immediately to persist missing fields
+  saveSnapshots(); // Save snapshots back immediately to persist missing fields
 
   // Setup SVG Defs for arrowheads
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -163,8 +186,10 @@ async function init() {
   if (graphData.categories.length > 0) {
     categoryFilter = graphData.categories[0].id;
     categoryFilterSelect.value = categoryFilter;
-    renderAll();
   }
+  
+  populateWorkerDropdown();
+  renderAll();
 
   // Initial centering
   transform.x = window.innerWidth / 2;
@@ -230,6 +255,24 @@ function saveData() {
   }
 }
 
+function populateWorkerDropdown() {
+  const allWorkers = new Set<string>();
+  graphData.technologies.forEach(t => {
+    if (t.workerGroups) {
+      Object.keys(t.workerGroups).forEach(w => allWorkers.add(w));
+    }
+  });
+  
+  workerFilterSelect.innerHTML = '<option value="">-- Alle Arbeitergruppen --</option>';
+  Array.from(allWorkers).sort().forEach(worker => {
+    const opt = document.createElement('option');
+    opt.value = worker;
+    opt.textContent = worker;
+    workerFilterSelect.appendChild(opt);
+  });
+  workerFilterSelect.value = workerFilter;
+}
+
 function resolveAllCollisions(dataRef: GraphData) {
   let overlapFound = true;
   let iters = 0;
@@ -280,18 +323,28 @@ function getCategoryFilteredTechnologies(): Technology[] {
 function getVisibleTechnologies(): Technology[] {
   const query = focusInput.value.toLowerCase().trim();
 
+  let filteredTechs = graphData.technologies;
+
   // If focus filter is active, ignore category filter and show focused tech + prerequisites
   if (query) {
     const focusMatch = getFocusMatch(query);
     if (focusMatch) {
+      // @ts-ignore - Assuming getConnectedNodes is defined below in the file
       const connectedIds = getConnectedNodes(focusMatch.id, focusPrereqsOnly.checked);
-      return graphData.technologies.filter(tech => connectedIds.has(tech.id));
+      filteredTechs = graphData.technologies.filter(tech => connectedIds.has(tech.id));
     }
+  } else {
+    // Otherwise, apply category filter
+    filteredTechs = getCategoryFilteredTechnologies();
+  }
+  
+  if (workerFilter !== '') {
+    filteredTechs = filteredTechs.filter(tech => tech.workerGroups && workerFilter in tech.workerGroups);
   }
 
-  // Otherwise, apply category filter
-  const categoryFilteredTechs = getCategoryFilteredTechnologies();
-  return categoryFilteredTechs;
+  workerFilterCount.textContent = `${filteredTechs.length} Techs`;
+
+  return filteredTechs;
 }
 
 function getVisibleDependencies(visibleTechs: Technology[]): Dependency[] {
@@ -327,6 +380,7 @@ function updateFocusState() {
   const query = focusInput.value.toLowerCase().trim();
   if (!query) {
     focusStats.classList.add('hidden');
+    workerPanel.classList.add('hidden');
     nodeElements.forEach(node => node.classList.remove('focused-match'));
     return;
   }
@@ -334,6 +388,7 @@ function updateFocusState() {
   const focusMatch = getFocusMatch(query);
   if (!focusMatch) {
     focusStats.classList.add('hidden');
+    workerPanel.classList.add('hidden');
     nodeElements.forEach(node => node.classList.remove('focused-match'));
     return;
   }
@@ -345,6 +400,21 @@ function updateFocusState() {
   nodeElements.forEach((node, id) => {
     node.classList.toggle('focused-match', id === focusMatch.id);
   });
+
+  workerPanel.classList.remove('hidden');
+  workerCardsContainer.innerHTML = '';
+  if (focusMatch.workerGroups) {
+    Object.entries(focusMatch.workerGroups).forEach(([workerName, count]) => {
+      const card = document.createElement('div');
+      card.className = 'worker-card';
+      card.innerHTML = `
+        <div class="pin pin-in" title="Verbindungsknoten"></div>
+        <div class="worker-name">${workerName}</div>
+        <div class="worker-count">Anzahl: <span>${count}</span></div>
+      `;
+      workerCardsContainer.appendChild(card);
+    });
+  }
 }
 
 // --- Rendering ---
@@ -785,6 +855,11 @@ function setupEvents() {
     if (autoSaveToggle.checked) {
       saveData();
     }
+  });
+
+  workerFilterSelect.addEventListener('change', () => {
+    workerFilter = workerFilterSelect.value;
+    renderAll();
   });
 
   exportBtn.addEventListener('click', () => {

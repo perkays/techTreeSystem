@@ -110,6 +110,69 @@ body {
   font-weight: 600;
   color: #fff;
 }
+
+.worker-panel {
+  pointer-events: auto;
+  background: var(--panel-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  position: absolute;
+  top: 220px;
+  right: 24px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  width: 250px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.worker-panel h3 {
+  font-size: 16px;
+  color: #fff;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.worker-card {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.worker-card:last-child {
+  margin-bottom: 0;
+}
+
+.worker-card .pin-in {
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.worker-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.worker-count {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.worker-count span {
+  color: #fff;
+  font-weight: 500;
+}
+
 .hidden {
   display: none !important;
 }
