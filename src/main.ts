@@ -278,20 +278,20 @@ function getCategoryFilteredTechnologies(): Technology[] {
 }
 
 function getVisibleTechnologies(): Technology[] {
-  const categoryFilteredTechs = getCategoryFilteredTechnologies();
   const query = focusInput.value.toLowerCase().trim();
 
-  if (!query) {
-    return categoryFilteredTechs;
+  // If focus filter is active, ignore category filter and show focused tech + prerequisites
+  if (query) {
+    const focusMatch = getFocusMatch(query);
+    if (focusMatch) {
+      const connectedIds = getConnectedNodes(focusMatch.id, focusPrereqsOnly.checked);
+      return graphData.technologies.filter(tech => connectedIds.has(tech.id));
+    }
   }
 
-  const focusMatch = getFocusMatch(query);
-  if (!focusMatch) {
-    return categoryFilteredTechs;
-  }
-
-  const connectedIds = getConnectedNodes(focusMatch.id, focusPrereqsOnly.checked);
-  return categoryFilteredTechs.filter(tech => connectedIds.has(tech.id));
+  // Otherwise, apply category filter
+  const categoryFilteredTechs = getCategoryFilteredTechnologies();
+  return categoryFilteredTechs;
 }
 
 function getVisibleDependencies(visibleTechs: Technology[]): Dependency[] {
