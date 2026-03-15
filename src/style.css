@@ -95,7 +95,7 @@ body {
   font-size: 14px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.5);
   position: absolute;
-  top: 90px;
+  top: 220px;
   left: 24px;
   line-height: 1.6;
 }
@@ -171,6 +171,51 @@ body {
 .worker-count span {
   color: #fff;
   font-weight: 500;
+}
+
+.worker-panel-sep {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin: 12px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+.research-card {
+  border-color: rgba(139,92,246,0.4);
+  background: rgba(139,92,246,0.08);
+}
+
+.research-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.research-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 2px 0;
+}
+
+.research-label {
+  color: var(--text-muted);
+}
+
+.research-value {
+  color: #fff;
+  font-weight: 600;
+}
+
+.success-chance {
+  color: hsl(calc(var(--chance, 50) * 1.2deg), 70%, 65%) !important;
 }
 
 .hidden {

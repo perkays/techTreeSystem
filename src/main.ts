@@ -1,4 +1,4 @@
-import { cloneGraphData, loadBaseGraphData, normalizeGraphData, GraphData, Technology, Dependency } from './initialData';
+import { generateInitialGraph, GraphData, Technology, Dependency } from './initialData';
 
 // --- State and Interfaces ---
 export interface Snapshot {
@@ -14,8 +14,8 @@ let graphData: GraphData = {
   dependencies: []
 };
 let snapshots: Snapshot[] = [];
-let categoryFilter: string = ''; // Will be set to first category on init
-let workerFilter: string = '';
+let categoryFilter: string = ''; // set to first category on init
+let workerFilter: string = ''; // set by worker-filter dropdown
 
 let transform = { x: 0, y: 0, scale: 1 };
 const IS_DRAG_NODE = 1, IS_DRAG_WORKSPACE = 2, IS_DRAG_PIN = 3;
@@ -36,17 +36,13 @@ const focusInput = document.getElementById('focus-input') as HTMLInputElement;
 const focusApplyBtn = document.getElementById('focus-apply-btn') as HTMLButtonElement;
 const focusClearBtn = document.getElementById('focus-clear-btn') as HTMLButtonElement;
 const focusPrereqsOnly = document.getElementById('focus-prereqs-only') as HTMLInputElement;
+const workerFilterSelect = document.getElementById('worker-filter') as HTMLSelectElement;
+const workerFilterCount = document.getElementById('worker-filter-count')!;
 const viewModeToggle = document.getElementById('view-mode-toggle') as HTMLInputElement;
 const autoSaveToggle = document.getElementById('auto-save-toggle') as HTMLInputElement;
 const datalist = document.getElementById('tech-list')!;
 const exportBtn = document.getElementById('export-btn')!;
 const importBtn = document.getElementById('import-btn') as HTMLInputElement;
-
-// Worker Elements
-const workerFilterSelect = document.getElementById('worker-filter') as HTMLSelectElement;
-const workerFilterCount = document.getElementById('worker-filter-count') as HTMLSpanElement;
-const workerPanel = document.getElementById('worker-panel')!;
-const workerCardsContainer = document.getElementById('worker-cards-container')!;
 
 // Snapshot Elements
 const snapshotDropdown = document.getElementById('snapshot-dropdown') as HTMLSelectElement;
@@ -62,6 +58,8 @@ const statDepCount = document.getElementById('stat-dep-count')!;
 const focusStats = document.getElementById('focus-stats')!;
 const statFocusName = document.getElementById('stat-focus-name')!;
 const statFocusReq = document.getElementById('stat-focus-req')!;
+const workerPanel = document.getElementById('worker-panel')!;
+const workerCardsContainer = document.getElementById('worker-cards-container')!;
 
 // Maps for quick lookups
 const nodeElements = new Map<string, HTMLDivElement>();
@@ -90,62 +88,58 @@ function serializeData(data: GraphData) {
       .filter(d => d.targetId === t.id)
       .map(d => data.technologies.find(src => src.id === d.sourceId)?.name)
       .filter(Boolean);
-    return { ...t, prerequisites: prereqs, workerGroups: { ...t.workerGroups } };
+    return { ...t, prerequisites: prereqs };
   });
   return { categories: data.categories, technologies: techs };
 }
 
-function deserializeData(parsed: unknown): GraphData {
-  return normalizeGraphData(parsed);
-}
+function deserializeData(parsed: any): GraphData {
+  if (parsed.dependencies && !parsed.technologies[0]?.prerequisites) {
+     return parsed as GraphData;
+  }
 
-function hasGraphContent(data: GraphData) {
-  return data.categories.length > 0 && data.technologies.length > 0;
-}
-
-function mergeMissingWorkerGroups(targetData: GraphData, baseData: GraphData) {
-  targetData.technologies.forEach(tech => {
-    if (!tech.workerGroups || Object.keys(tech.workerGroups).length === 0) {
-      const baseTech = baseData.technologies.find(t => t.id === tech.id);
-      if (baseTech && baseTech.workerGroups) {
-        tech.workerGroups = { ...baseTech.workerGroups };
-      }
+  const deps: Dependency[] = [];
+  parsed.technologies.forEach((t: any) => {
+    if (t.prerequisites) {
+      t.prerequisites.forEach((pName: string) => {
+        const sourceTech = parsed.technologies.find((tech: any) => tech.name === pName);
+        if (sourceTech) {
+          deps.push({ sourceId: sourceTech.id, targetId: t.id });
+        }
+      });
     }
   });
+
+  const techs = parsed.technologies.map((t: any) => {
+    const { prerequisites, ...rest } = t;
+    return rest;
+  });
+
+  return {
+    categories: parsed.categories || [],
+    technologies: techs,
+    dependencies: deps
+  };
 }
 
 // --- Initialization ---
-async function init() {
+function init() {
   const isAutoSave = localStorage.getItem('selesta_autosave');
   autoSaveToggle.checked = isAutoSave === null ? false : isAutoSave === 'true';
 
-  const baseGraphData = await loadBaseGraphData();
-
-  loadSnapshots(baseGraphData);
+  loadSnapshots();
 
   // Try loading active working state from localStorage
   const activeSaved = localStorage.getItem('selesta_techtree_v2');
   if (activeSaved) {
     try {
-      const restoredGraph = deserializeData(JSON.parse(activeSaved));
-      if (hasGraphContent(restoredGraph)) {
-        graphData = restoredGraph;
-      } else {
-        localStorage.removeItem('selesta_techtree_v2');
-        graphData = cloneGraphData(snapshots[snapshots.length - 1].data);
-      }
+      graphData = deserializeData(JSON.parse(activeSaved));
     } catch {
-      localStorage.removeItem('selesta_techtree_v2');
-      graphData = cloneGraphData(snapshots[snapshots.length - 1].data);
+      graphData = JSON.parse(JSON.stringify(snapshots[snapshots.length - 1].data)); // Fallback
     }
   } else {
-    graphData = cloneGraphData(snapshots[snapshots.length - 1].data);
+    graphData = JSON.parse(JSON.stringify(snapshots[snapshots.length - 1].data));
   }
-
-  mergeMissingWorkerGroups(graphData, baseGraphData);
-  snapshots.forEach(s => mergeMissingWorkerGroups(s.data, baseGraphData));
-  saveData(); // Save back immediately to persist missing fields
-  saveSnapshots(); // Save snapshots back immediately to persist missing fields
 
   // Setup SVG Defs for arrowheads
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -174,21 +168,36 @@ async function init() {
 
   renderAll();
 
-  // Populate category filter dropdown and set default to first category
+  // Populate category filter dropdown
+  categoryFilterSelect.innerHTML = '<option value="">-- Kategorie wählen --</option><option value="**all**">Alle Technologien</option>';
   graphData.categories.forEach(cat => {
-    const option = document.createElement('option');
-    option.value = cat.id;
-    option.textContent = cat.name;
-    categoryFilterSelect.appendChild(option);
+    const opt = document.createElement('option');
+    opt.value = cat.id;
+    opt.textContent = cat.name;
+    categoryFilterSelect.appendChild(opt);
   });
-
-  // Set default to first category for performance
   if (graphData.categories.length > 0) {
     categoryFilter = graphData.categories[0].id;
     categoryFilterSelect.value = categoryFilter;
   }
-  
-  populateWorkerDropdown();
+
+  // Populate worker filter dropdown
+  const allWorkerGroups = new Set<string>();
+  graphData.technologies.forEach(t => {
+    const wg = (t as any).workerGroups;
+    if (wg) Object.keys(wg).forEach(w => allWorkerGroups.add(w));
+  });
+  workerFilterSelect.innerHTML = '<option value="">-- Alle Arbeitergruppen --</option>';
+  [...allWorkerGroups].sort().forEach(w => {
+    const opt = document.createElement('option');
+    opt.value = w;
+    opt.textContent = w;
+    workerFilterSelect.appendChild(opt);
+  });
+
+  // Default: Nur Vorgänger checked
+  focusPrereqsOnly.checked = true;
+
   renderAll();
 
   // Initial centering
@@ -200,7 +209,7 @@ async function init() {
   setupEvents();
 }
 
-function loadSnapshots(baseGraphData: GraphData) {
+function loadSnapshots() {
   const saved = localStorage.getItem('selesta_snapshots_v2');
   if (saved) {
     try {
@@ -208,7 +217,7 @@ function loadSnapshots(baseGraphData: GraphData) {
       snapshots = parsed.map((s: any) => ({
           ...s,
           data: deserializeData(s.data)
-      })).filter((snapshot: Snapshot) => hasGraphContent(snapshot.data));
+      }));
     } catch {
       snapshots = [];
     }
@@ -219,7 +228,7 @@ function loadSnapshots(baseGraphData: GraphData) {
       id: 'default_base',
       name: 'System Default',
       timestamp: new Date().toISOString(),
-      data: cloneGraphData(baseGraphData)
+      data: generateInitialGraph()
     });
     saveSnapshots();
   }
@@ -255,24 +264,6 @@ function saveData() {
   }
 }
 
-function populateWorkerDropdown() {
-  const allWorkers = new Set<string>();
-  graphData.technologies.forEach(t => {
-    if (t.workerGroups) {
-      Object.keys(t.workerGroups).forEach(w => allWorkers.add(w));
-    }
-  });
-  
-  workerFilterSelect.innerHTML = '<option value="">-- Alle Arbeitergruppen --</option>';
-  Array.from(allWorkers).sort().forEach(worker => {
-    const opt = document.createElement('option');
-    opt.value = worker;
-    opt.textContent = worker;
-    workerFilterSelect.appendChild(opt);
-  });
-  workerFilterSelect.value = workerFilter;
-}
-
 function resolveAllCollisions(dataRef: GraphData) {
   let overlapFound = true;
   let iters = 0;
@@ -303,68 +294,136 @@ function updateGlobalStats() {
   statDepCount.textContent = graphData.dependencies.length.toString();
 }
 
-function getFocusMatch(query: string): Technology | null {
-  let exactMatch = graphData.technologies.find(t => t.name.toLowerCase() === query);
-  if (exactMatch) {
-    return exactMatch;
-  }
+// --- Rendering ---
+function deduplicateTechIds(data: GraphData): void {
+  const seenIds = new Set<string>();
+  data.technologies.forEach(tech => {
+    if (seenIds.has(tech.id)) {
+      const oldId = tech.id;
+      let counter = 2;
+      while (seenIds.has(`${oldId}_${counter}`)) counter++;
+      const newId = `${oldId}_${counter}`;
+      data.dependencies.forEach(d => {
+        if (d.sourceId === oldId) d.sourceId = newId;
+        if (d.targetId === oldId) d.targetId = newId;
+      });
+      tech.id = newId;
+    }
+    seenIds.add(tech.id);
+  });
+}
 
+function getFocusMatch(query: string): Technology | null {
+  let exact = graphData.technologies.find(t => t.name.toLowerCase() === query);
+  if (exact) return exact;
   const partials = graphData.technologies.filter(t => t.name.toLowerCase().includes(query));
   return partials.length > 0 ? partials[0] : null;
 }
 
 function getCategoryFilteredTechnologies(): Technology[] {
-  if (categoryFilter === '' || categoryFilter === '**all**') {
-    return graphData.technologies;
-  }
-  return graphData.technologies.filter(tech => tech.category === categoryFilter);
+  if (categoryFilter === '' || categoryFilter === '**all**') return graphData.technologies;
+  return graphData.technologies.filter(t => t.category === categoryFilter);
+}
+
+function getWorkerFilteredTechnologies(techs: Technology[]): Technology[] {
+  if (!workerFilter) return techs;
+  return techs.filter(t => {
+    const wg = (t as any).workerGroups;
+    return wg && Object.keys(wg).includes(workerFilter);
+  });
 }
 
 function getVisibleTechnologies(): Technology[] {
   const query = focusInput.value.toLowerCase().trim();
-
-  let filteredTechs = graphData.technologies;
-
-  // If focus filter is active, ignore category filter and show focused tech + prerequisites
   if (query) {
-    const focusMatch = getFocusMatch(query);
-    if (focusMatch) {
-      // @ts-ignore - Assuming getConnectedNodes is defined below in the file
-      const connectedIds = getConnectedNodes(focusMatch.id, focusPrereqsOnly.checked);
-      filteredTechs = graphData.technologies.filter(tech => connectedIds.has(tech.id));
+    const match = getFocusMatch(query);
+    if (match) {
+      const ids = getConnectedNodes(match.id, focusPrereqsOnly.checked);
+      return graphData.technologies.filter(t => ids.has(t.id));
     }
-  } else {
-    // Otherwise, apply category filter
-    filteredTechs = getCategoryFilteredTechnologies();
   }
-  
-  if (workerFilter !== '') {
-    filteredTechs = filteredTechs.filter(tech => tech.workerGroups && workerFilter in tech.workerGroups);
-  }
-
-  workerFilterCount.textContent = `${filteredTechs.length} Techs`;
-
-  return filteredTechs;
+  return getWorkerFilteredTechnologies(getCategoryFilteredTechnologies());
 }
 
 function getVisibleDependencies(visibleTechs: Technology[]): Dependency[] {
-  const filteredIds = new Set(visibleTechs.map(t => t.id));
-  return graphData.dependencies.filter(dep => 
-    filteredIds.has(dep.sourceId) && filteredIds.has(dep.targetId)
-  );
+  const ids = new Set(visibleTechs.map(t => t.id));
+  return graphData.dependencies.filter(d => ids.has(d.sourceId) && ids.has(d.targetId));
 }
 
-function applySearchState() {
-  const query = searchInput.value.toLowerCase().trim();
+function updateFocusState(): void {
+  const query = focusInput.value.toLowerCase().trim();
   if (!query) {
-    nodeElements.forEach(node => {
-      node.classList.remove('searching');
-      node.classList.remove('searching-match');
-    });
+    focusStats.classList.add('hidden');
+    workerPanel.classList.add('hidden');
+    nodeElements.forEach(node => node.classList.remove('focused-match'));
+    return;
+  }
+  const match = getFocusMatch(query);
+  if (!match) {
+    focusStats.classList.add('hidden');
+    workerPanel.classList.add('hidden');
+    nodeElements.forEach(node => node.classList.remove('focused-match'));
     return;
   }
 
+  // Focus stats (top-left panel)
+  focusStats.classList.remove('hidden');
+  statFocusName.textContent = match.name;
+  statFocusReq.textContent = graphData.dependencies.filter(d => d.targetId === match.id).length.toString();
+  nodeElements.forEach((node, id) => node.classList.toggle('focused-match', id === match.id));
+
+  // Worker panel (right side)
+  workerPanel.classList.remove('hidden');
+  workerCardsContainer.innerHTML = '';
+
+  const tech = match as any;
+
+  // Research info card
+  if (tech.research) {
+    const r = tech.research;
+    const infoCard = document.createElement('div');
+    infoCard.className = 'worker-card research-card';
+    infoCard.innerHTML = `
+      <div class="research-title">${match.name}</div>
+      <div class="research-row"><span class="research-label">Kosten</span><span class="research-value">${r.cost.toLocaleString('de-DE')} €</span></div>
+      <div class="research-row"><span class="research-label">Dauer</span><span class="research-value">${r.durationDays} Tage</span></div>
+      <div class="research-row">
+        <span class="research-label">Erfolg</span>
+        <span class="research-value success-chance" style="--chance:${r.successChance}">${r.successChance}%</span>
+      </div>
+    `;
+    workerCardsContainer.appendChild(infoCard);
+  }
+
+  // Separator if both sections present
+  if (tech.research && tech.workerGroups && Object.keys(tech.workerGroups).length > 0) {
+    const sep = document.createElement('div');
+    sep.className = 'worker-panel-sep';
+    sep.textContent = 'Benötigte Arbeiter';
+    workerCardsContainer.appendChild(sep);
+  }
+
+  // Worker group cards
+  if (tech.workerGroups) {
+    Object.entries(tech.workerGroups).forEach(([name, count]) => {
+      const card = document.createElement('div');
+      card.className = 'worker-card';
+      card.innerHTML = `
+        <div class="worker-name">${name}</div>
+        <div class="worker-count">Anzahl: <span>${count}</span></div>
+      `;
+      workerCardsContainer.appendChild(card);
+    });
+  }
+}
+
+function applySearchState(): void {
+  const query = searchInput.value.toLowerCase().trim();
   nodeElements.forEach((node, id) => {
+    if (!query) {
+      node.classList.remove('searching', 'searching-match');
+      return;
+    }
     const tech = graphData.technologies.find(t => t.id === id);
     if (tech && tech.name.toLowerCase().includes(query)) {
       node.classList.remove('searching');
@@ -376,49 +435,17 @@ function applySearchState() {
   });
 }
 
-function updateFocusState() {
-  const query = focusInput.value.toLowerCase().trim();
-  if (!query) {
-    focusStats.classList.add('hidden');
-    workerPanel.classList.add('hidden');
-    nodeElements.forEach(node => node.classList.remove('focused-match'));
+function updateWorkerFilterCount(): void {
+  if (!workerFilter) {
+    workerFilterCount.textContent = '';
     return;
   }
-
-  const focusMatch = getFocusMatch(query);
-  if (!focusMatch) {
-    focusStats.classList.add('hidden');
-    workerPanel.classList.add('hidden');
-    nodeElements.forEach(node => node.classList.remove('focused-match'));
-    return;
-  }
-
-  focusStats.classList.remove('hidden');
-  statFocusName.textContent = focusMatch.name;
-  statFocusReq.textContent = graphData.dependencies.filter(d => d.targetId === focusMatch.id).length.toString();
-
-  nodeElements.forEach((node, id) => {
-    node.classList.toggle('focused-match', id === focusMatch.id);
-  });
-
-  workerPanel.classList.remove('hidden');
-  workerCardsContainer.innerHTML = '';
-  if (focusMatch.workerGroups) {
-    Object.entries(focusMatch.workerGroups).forEach(([workerName, count]) => {
-      const card = document.createElement('div');
-      card.className = 'worker-card';
-      card.innerHTML = `
-        <div class="pin pin-in" title="Verbindungsknoten"></div>
-        <div class="worker-name">${workerName}</div>
-        <div class="worker-count">Anzahl: <span>${count}</span></div>
-      `;
-      workerCardsContainer.appendChild(card);
-    });
-  }
+  const count = getWorkerFilteredTechnologies(getCategoryFilteredTechnologies()).length;
+  workerFilterCount.textContent = `${count} Techs`;
 }
 
-// --- Rendering ---
 function renderAll() {
+  deduplicateTechIds(graphData);
   updateGlobalStats();
   nodesContainer.innerHTML = '';
   datalist.innerHTML = '';
@@ -436,17 +463,13 @@ function renderAll() {
   const visibleTechs = getVisibleTechnologies();
   const visibleDeps = getVisibleDependencies(visibleTechs);
 
-  visibleTechs.forEach(tech => {
-    createNodeElement(tech);
-  });
+  visibleTechs.forEach(tech => createNodeElement(tech));
+  visibleDeps.forEach(dep => createConnectionElement(dep));
 
-  visibleDeps.forEach(dep => {
-    createConnectionElement(dep);
-  });
-  
   updateAllConnections();
   updateFocusState();
   applySearchState();
+  updateWorkerFilterCount();
 }
 
 function createNodeElement(tech: Technology) {
@@ -857,11 +880,6 @@ function setupEvents() {
     }
   });
 
-  workerFilterSelect.addEventListener('change', () => {
-    workerFilter = workerFilterSelect.value;
-    renderAll();
-  });
-
   exportBtn.addEventListener('click', () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(serializeData(graphData), null, 2));
     const dlAnchorElem = document.createElement('a');
@@ -892,7 +910,7 @@ function setupEvents() {
             id: 'snap_' + Date.now(),
             name: `Imported - ${formatted}`,
             timestamp: d.toISOString(),
-            data: cloneGraphData(parsed)
+            data: JSON.parse(JSON.stringify(parsed))
           });
           saveSnapshots();
           updateSnapshotDropdown();
@@ -911,6 +929,10 @@ function setupEvents() {
     importBtn.value = '';
   });
 
+  searchInput.addEventListener('input', () => {
+    applySearchState();
+  });
+
   categoryApplyBtn.addEventListener('click', () => {
     categoryFilter = categoryFilterSelect.value;
     renderAll();
@@ -923,6 +945,7 @@ function setupEvents() {
   focusClearBtn.addEventListener('click', () => {
     focusInput.value = '';
     focusClearBtn.style.display = 'none';
+    renderAll();
   });
 
   focusInput.addEventListener('input', () => {
@@ -933,8 +956,9 @@ function setupEvents() {
     renderAll();
   });
 
-  searchInput.addEventListener('input', () => {
-    applySearchState();
+  workerFilterSelect.addEventListener('change', () => {
+    workerFilter = workerFilterSelect.value;
+    renderAll();
   });
 
   // Snapshot functionality
@@ -942,7 +966,7 @@ function setupEvents() {
     const snapId = snapshotDropdown.value;
     const snap = snapshots.find(s => s.id === snapId);
     if (snap) {
-        graphData = cloneGraphData(snap.data);
+        graphData = JSON.parse(JSON.stringify(snap.data)); 
         saveData();
         renderAll();
     }
@@ -994,30 +1018,15 @@ function getConnectedNodes(rootId: string, prereqsOnly: boolean): Set<string> {
   }
   
   // traverse backwards (sources / prerequisites OF this tech)
-  if (prereqsOnly) {
-    // Full prerequisite chain - recurse until the root technologies are reached
-    queue = [rootId];
-    while (queue.length > 0) {
-      const cur = queue.shift()!;
-      graphData.dependencies.forEach(d => {
-        if (d.targetId === cur && !connected.has(d.sourceId)) {
-          connected.add(d.sourceId);
-          queue.push(d.sourceId);
-        }
-      });
-    }
-  } else {
-    // Full chain - traverse all the way back
-    queue = [rootId];
-    while (queue.length > 0) {
-      const cur = queue.shift()!;
-      graphData.dependencies.forEach(d => {
-        if (d.targetId === cur && !connected.has(d.sourceId)) {
-          connected.add(d.sourceId);
-          queue.push(d.sourceId);
-        }
-      });
-    }
+  queue = [rootId];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    graphData.dependencies.forEach(d => {
+      if (d.targetId === cur && !connected.has(d.sourceId)) {
+        connected.add(d.sourceId);
+        queue.push(d.sourceId);
+      }
+    });
   }
   return connected;
 }
@@ -1061,7 +1070,4 @@ function applyTransform() {
 }
 
 // Start
-init().catch((error) => {
-  console.error('Failed to initialize tech tree', error);
-  alert('Die Tech-Tree-Daten konnten nicht geladen werden. Bitte pruefe public/tech-tree-data.json.');
-});
+init();

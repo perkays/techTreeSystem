@@ -13,22 +13,22 @@
         <div class="controls">
           <input type="text" id="search-input" placeholder="Search technology..." />
           <div style="display: flex; gap: 8px; align-items: center;">
-            <select id="category-filter" title="Filter technologies by category">
+            <select id="category-filter" title="Filter nach Kategorie">
               <option value="">-- Kategorie wählen --</option>
               <option value="**all**">Alle Technologien</option>
             </select>
-            <button id="category-apply-btn" title="Apply category filter">Übernehmen</button>
+            <button id="category-apply-btn" title="Kategorie-Filter anwenden">Übernehmen</button>
           </div>
           <div style="display: flex; gap: 8px; align-items: center;">
             <div style="position: relative; display: flex; align-items: center;">
               <input type="text" list="tech-list" id="focus-input" placeholder="Focus Tech..." title="Show only a specific technology and dependencies" style="padding-right: 32px;" />
-              <button id="focus-clear-btn" type="button" title="Clear focus input" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; font-size: 16px; padding: 0; color: var(--text-muted); display: none;">✕</button>
+              <button id="focus-clear-btn" type="button" title="Focus löschen" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; font-size: 16px; padding: 0; color: var(--text-muted); display: none;">✕</button>
             </div>
             <datalist id="tech-list"></datalist>
-            <button id="focus-apply-btn" title="Apply focus filter">Übernehmen</button>
+            <button id="focus-apply-btn" title="Focus-Filter anwenden">Übernehmen</button>
           </div>
           <label class="checkbox-label" title="Zeigt nur an, welche Technologien vorher erforscht werden müssen">
-            <input type="checkbox" id="focus-prereqs-only" />
+            <input type="checkbox" id="focus-prereqs-only" checked />
             Nur Vorgänger
           </label>
           <label class="checkbox-label" title="Nur View-Modus (Mehr Performance, keine Bearbeitung)">
@@ -38,8 +38,9 @@
           <label class="checkbox-label" title="Änderungen am Baum (Positionen, Linien) werden nur gespeichert, wenn aktiviert. Ansonsten lädt das Neuladen den letzten gesicherten Stand.">
             <input type="checkbox" id="auto-save-toggle" />
             Auto-Save
-          <div style="display: flex; gap: 8px; align-items: center; margin-left: 12px;">
-            <select id="worker-filter" title="Filter technologies by worker group">
+          </label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="worker-filter" title="Filter nach Arbeitergruppe">
               <option value="">-- Alle Arbeitergruppen --</option>
             </select>
             <span id="worker-filter-count" style="font-size: 13px; color: var(--text-muted); min-width: 60px;">0 Techs</span>
